@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>NUNO — Online UNO</title>
+  <meta name="description" content="Play UNO online with up to 8 players.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 90'><rect width='64' height='90' rx='9' fill='%23e53935' stroke='white' stroke-width='5'/><ellipse cx='32' cy='45' rx='20' ry='32' transform='rotate(30 32 45)' fill='white'/></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Home -->
+  <section id="home" class="screen">
+    <div class="home-card">
+      <div class="logo" aria-label="NUNO"><span>NUNO</span></div>
+      <p class="tagline">The classic card game — online with up to 8 players.</p>
+      <label class="field">
+        <span>Your name</span>
+        <input id="name" maxlength="16" autocomplete="nickname" placeholder="Enter your name">
+      </label>
+      <button id="create" class="btn primary big">Create a table</button>
+      <div class="divider"><span>or join one</span></div>
+      <div class="join-row">
+        <input id="code" maxlength="4" placeholder="CODE" autocapitalize="characters" spellcheck="false">
+        <button id="join" class="btn big">Join</button>
+      </div>
+      <button class="btn link rules-open">How to play</button>
+    </div>
+  </section>
+
+  <!-- Lobby -->
+  <section id="lobby" class="screen hidden">
+    <div class="lobby-card">
+      <div class="lobby-head">
+        <div>
+          <div class="muted small">Table code</div>
+          <div id="lobby-code" class="code-display"></div>
+        </div>
+        <button id="copy-link" class="btn">Copy invite link</button>
+      </div>
+      <ol id="seats" class="seats"></ol>
+      <div id="host-controls" class="host-controls">
+        <button id="add-bot" class="btn">+ Add bot</button>
+      </div>
+      <p id="lobby-hint" class="muted"></p>
+      <div class="lobby-actions">
+        <button id="leave-lobby" class="btn">Leave</button>
+        <button class="btn link rules-open">How to play</button>
+        <button id="start" class="btn primary big">Start game</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Game -->
+  <section id="game" class="screen hidden">
+    <div class="table">
+      <header class="topbar">
+        <div class="round-info">First to play all their cards wins</div>
+        <div class="topbar-actions">
+          <button id="anim" class="btn small-btn" aria-label="Toggle animations">✨</button>
+          <button id="sound" class="btn small-btn" aria-label="Toggle sound">🔊</button>
+          <button class="btn small-btn rules-open">Rules</button>
+          <button id="leave-game" class="btn small-btn">Leave</button>
+        </div>
+      </header>
+      <div id="opp-top" class="opp-slot top"></div>
+      <div id="opp-left" class="opp-slot left"></div>
+      <div id="opp-right" class="opp-slot right"></div>
+
+      <div class="center">
+        <div id="direction" class="direction" aria-hidden="true">
+          <svg viewBox="0 0 200 200">
+            <circle cx="100" cy="100" r="90" fill="none" stroke="currentColor" stroke-width="3" stroke-dasharray="4 10" stroke-linecap="round" opacity="0.6"/>
+            <g fill="none" stroke="currentColor" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M92 2 L104 10 L92 18"/>
+              <path d="M92 2 L104 10 L92 18" transform="rotate(90 100 100)"/>
+              <path d="M92 2 L104 10 L92 18" transform="rotate(180 100 100)"/>
+              <path d="M92 2 L104 10 L92 18" transform="rotate(270 100 100)"/>
+            </g>
+          </svg>
+        </div>
+        <button id="deck" class="pile deck" title="Draw a card">
+          <div class="card back"><span class="oval"><span class="brand">NUNO</span></span></div>
+          <span id="deck-count" class="pile-count"></span>
+        </button>
+        <div class="pile discard-wrap">
+          <div id="discard" class="discard"></div>
+          <div id="stack" class="stack-badge hidden" aria-live="polite"></div>
+        </div>
+      </div>
+
+      <div class="me">
+        <div class="me-bar">
+          <div class="me-info">
+            <span id="me-avatar"></span>
+            <span id="me-name" class="me-name"></span>
+            <span id="me-count" class="chip"></span>
+          </div>
+          <div id="status" class="status"></div>
+          <div class="me-actions">
+            <button id="pass" class="btn hidden">Keep &amp; pass</button>
+            <button id="take" class="btn take-btn hidden"></button>
+            <button id="uno" class="btn uno-btn">UNO!</button>
+          </div>
+        </div>
+        <div id="hand" class="hand"></div>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- Animation layer -->
+  <div id="fx" class="fx" aria-hidden="true"></div>
+
+  <!-- Color wheel -->
+  <div id="color-modal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Choose a color">
+    <div class="wheel-wrap">
+      <div class="wheel">
+        <button class="wedge c-red" data-color="red" aria-label="Red"></button>
+        <button class="wedge c-blue" data-color="blue" aria-label="Blue"></button>
+        <button class="wedge c-yellow" data-color="yellow" aria-label="Yellow"></button>
+        <button class="wedge c-green" data-color="green" aria-label="Green"></button>
+        <div class="wheel-hub">Pick a<br>color</div>
+      </div>
+      <button id="color-cancel" class="btn">Cancel</button>
+    </div>
+  </div>
+
+  <!-- Game over -->
+  <div id="result-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="result-title">
+    <div class="modal-card wide result-card">
+      <div class="result-crown" aria-hidden="true">🏆</div>
+      <h2 id="result-title"></h2>
+      <p class="muted">Cards left in hand</p>
+      <ol id="result-list" class="result-list"></ol>
+      <div class="modal-actions">
+        <button id="to-lobby" class="btn big">Back to lobby</button>
+        <button id="rematch" class="btn primary big">Rematch</button>
+      </div>
+      <p id="result-wait" class="muted small"></p>
+    </div>
+  </div>
+
+  <!-- Rules -->
+  <div id="rules-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="rules-title">
+    <div class="modal-card wide rules">
+      <h2 id="rules-title">How to play</h2>
+      <h3>Goal</h3>
+      <p>Be the first player to get rid of all your cards. The moment someone plays their last card, they win the game.</p>
+      <h3>Setup</h3>
+      <p>2–8 players, 108 cards. Everyone gets 7 cards; the top card of the deck starts the discard pile. Play begins to the dealer’s left and goes clockwise.</p>
+      <h3>Your turn</h3>
+      <p>Match the top card of the discard pile by <strong>color, number or symbol</strong>, or play a Wild. If you can’t (or don’t want to) play, draw one card. If that card can be played you may play it right away — otherwise your turn ends.</p>
+      <h3>Action cards</h3>
+      <ul>
+        <li><strong>Skip</strong> — the next player loses their turn.</li>
+        <li><strong>Reverse</strong> — play changes direction. With 2 players it works like Skip.</li>
+        <li><strong>Draw Two</strong> — the next player must stack another +2 or draw 2 and lose their turn.</li>
+        <li><strong>Wild</strong> — play any time and choose the next color.</li>
+        <li><strong>Wild Draw Four</strong> — play any time and choose the color; the next player must stack another +4 or draw 4 and lose their turn. It can’t be challenged.</li>
+      </ul>
+      <h3>Stacking +2 and +4</h3>
+      <p>When a +2 is played on you, you can answer with a +2 of your own (any color); when a +4 is played on you, you can answer with a +4. The two don’t mix — a +4 can’t go on a +2 stack, or the other way round. The total keeps growing (+2, +4, +6… or +4, +8, +12…) and passes to the next player. If you can stack, you choose: add your card, or press <strong>Take</strong> (or click the deck) to draw the whole total and lose your turn — holding a matching card doesn’t force you to use it. If you have nothing to stack, you take the total automatically.</p>
+      <h3>Turn timer</h3>
+      <p>You have 10 seconds to move. If time runs out you draw one card (kept even if it could be played) and play passes on. If a stack was waiting for you, you take the whole stack instead.</p>
+      <h3>UNO!</h3>
+      <p>Press <strong>UNO!</strong> when you’re about to play down to one card — it only lights up on your turn when you hold two cards and can play one of them (or right after you’ve played down to one). If another player catches you with one card before the next player starts their turn — by pressing <strong>Catch!</strong> on your seat — you draw 2.</p>
+      <h3>First card</h3>
+      <p>Wild Draw Four is reshuffled. Wild: the first player picks the color. Skip: the first player is skipped. Reverse: the dealer plays first and play goes counter-clockwise. Draw Two: the first player draws 2 and is skipped.</p>
+      <button id="rules-close" class="btn primary">Got it</button>
+    </div>
+  </div>
+
+  <div id="toasts" class="toasts" aria-live="polite"></div>
+  <div id="conn" class="conn hidden">Reconnecting…</div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="client.js"></script>
+</body>
+</html>
