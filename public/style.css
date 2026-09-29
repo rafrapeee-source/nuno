@@ -156,8 +156,11 @@ input:focus, select:focus { border-color: var(--accent); }
   border-radius: 50%;
   background: #fff;
 }
+/* The white rim keeps the four-color oval distinct once the card is filled with a color. */
 .card.c-wild .oval {
   background: conic-gradient(var(--red) 0 25%, var(--blue) 0 50%, var(--yellow) 0 75%, var(--green) 0);
+  border: calc(var(--cw) * 0.045) solid #fff;
+  box-shadow: 0 0 0 calc(var(--cw) * 0.012) rgba(0, 0, 0, 0.35);
 }
 /* Card labels use .pip (not .center, which is the table area). The glyph is slanted with a transform around its own center (not font-style: italic,
    which slants from the baseline and pushes the number off-center). */
