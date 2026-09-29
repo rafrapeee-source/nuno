@@ -195,6 +195,14 @@ input:focus, select:focus { border-color: var(--accent); }
   border: 1px solid #fff;
   background: conic-gradient(var(--red) 0 25%, var(--blue) 0 50%, var(--yellow) 0 75%, var(--green) 0);
 }
+/* A played Wild takes the chosen color in place of its black; the oval keeps all four. */
+.card.filled::before { content: ''; position: absolute; inset: 0; background: var(--fc); }
+.card.filled.fill-anim::before { animation: fill-in 0.6s cubic-bezier(0.2, 0.8, 0.3, 1) both; }
+.card.filled.fill-anim { animation: fill-flash 0.6s ease-out; }
+.card.f-red { --fc: var(--red); }
+.card.f-yellow { --fc: var(--yellow); }
+.card.f-green { --fc: var(--green); }
+.card.f-blue { --fc: var(--blue); }
 .card.back { --cc: var(--black); }
 .card.back .oval { background: var(--red); }
 .card.back .brand {
@@ -279,6 +287,17 @@ input:focus, select:focus { border-color: var(--accent); }
   font-weight: 900; padding: 0.4rem 0.9rem; border-radius: 999px; cursor: pointer;
   animation: pulse 0.5s infinite alternate;
 }
+/* Picking whose hand to take after a 7. */
+.opp.swap-target { cursor: pointer; border-color: #fff; border-style: dashed; animation: swap-pick 0.9s ease-in-out infinite; }
+.opp.swap-target:hover { transform: scale(1.08); border-style: solid; box-shadow: 0 0 28px rgba(255, 255, 255, 0.6); animation: none; }
+.swap-btn {
+  background: #fff; color: #10392a; border: none;
+  font-weight: 900; padding: 0.35rem 0.9rem; border-radius: 999px; cursor: pointer;
+}
+.opp.compact .swap-btn { font-size: 0.75rem; padding: 0.25rem 0.6rem; }
+.opp.swapping, .me-bar.swapping { box-shadow: 0 0 0 3px #fff, 0 0 30px rgba(255, 255, 255, 0.7); }
+.opp.land { animation: land 0.35s ease-out; }
+.hand .card.swap-in { animation: swap-in 0.45s cubic-bezier(0.3, 1.4, 0.5, 1) backwards; }
 .chip { font-size: 0.8rem; font-weight: 800; padding: 2px 10px; border-radius: 999px; background: rgba(255, 255, 255, 0.12); white-space: nowrap; }
 .chip.dealer { background: #fff; color: #111; }
 
@@ -305,6 +324,7 @@ input:focus, select:focus { border-color: var(--accent); }
 .direction svg { width: 100%; height: 100%; animation: spin 10s linear infinite; filter: drop-shadow(0 0 6px currentColor); opacity: 0.75; }
 .direction.ccw { transform: scaleX(-1); }
 .direction.burst svg { animation: spin 10s linear infinite, burst 0.7s ease; }
+.direction.whirl svg { animation: whirl 1.2s cubic-bezier(0.3, 0, 0.3, 1), spin 10s 1.2s linear infinite; }
 .pile { position: relative; background: none; border: none; padding: 0; }
 .deck { cursor: default; }
 .deck .card { box-shadow: 2px 2px 0 #333, 4px 4px 0 #222, 6px 6px 0 #111, 0 10px 24px rgba(0, 0, 0, 0.45); transition: transform 0.2s; }
@@ -444,6 +464,19 @@ input:focus, select:focus { border-color: var(--accent); }
   text-shadow: 5px 5px 0 #000, 0 0 30px rgba(255, 213, 74, 0.8);
   font-style: italic;
 }
+.splash.swap .splash-inner, .splash.rotate .splash-inner {
+  width: 130px; height: 130px;
+  display: grid; place-items: center;
+  border-radius: 50%;
+  background: radial-gradient(circle, #fff 0 55%, transparent 56%),
+    conic-gradient(var(--red) 0 25%, var(--blue) 0 50%, var(--yellow) 0 75%, var(--green) 0);
+  border: 5px solid #fff;
+  color: #111; font-size: 70px; font-style: italic;
+  box-shadow: 0 0 40px rgba(255, 255, 255, 0.6), 0 10px 0 rgba(0, 0, 0, 0.3);
+}
+.splash.swap .splash-inner { animation: swap-flip 1s ease-in-out; }
+.splash.rotate .splash-inner { animation: spin-in 1.1s cubic-bezier(0.3, 0, 0.3, 1); }
+.splash.rotate.ccw .splash-inner { animation-direction: reverse; }
 .splash.caught .splash-inner {
   font-size: 44px; color: #fff; background: #8e1c18;
   padding: 10px 22px; border-radius: 14px; border: 4px solid #fff;
@@ -574,6 +607,13 @@ input:focus, select:focus { border-color: var(--accent); }
 @keyframes turn-ring { 0%, 100% { box-shadow: 0 0 0 0 rgba(255, 213, 74, 0.9); } 50% { box-shadow: 0 0 0 7px rgba(255, 213, 74, 0); } }
 @keyframes grow { from { transform: scale(0.4) rotate(-20deg); } to { transform: scale(1); } }
 @keyframes burst { 0% { scale: 1; } 40% { scale: 1.18; } 100% { scale: 1; } }
+@keyframes fill-in { from { clip-path: circle(0% at 50% 50%); } to { clip-path: circle(75% at 50% 50%); } }
+@keyframes fill-flash { 0% { filter: brightness(1.8); } 100% { filter: none; } }
+@keyframes swap-pick { 0%, 100% { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.7); } 50% { box-shadow: 0 0 0 8px rgba(255, 255, 255, 0); } }
+@keyframes swap-in { from { opacity: 0; scale: 0.4; translate: 0 -60px; rotate: y 90deg; } }
+@keyframes swap-flip { 0%, 100% { rotate: y 0deg; } 50% { rotate: y 180deg; } }
+@keyframes spin-in { from { rotate: -360deg; } to { rotate: 0deg; } }
+@keyframes whirl { from { rotate: 0deg; } to { rotate: 720deg; } }
 @keyframes ripple { from { transform: scale(0.3); opacity: 1; } to { transform: scale(16); opacity: 0; } }
 @keyframes splash {
   0% { transform: translate(-50%, -50%) scale(0.2) rotate(-20deg); opacity: 0; }
@@ -626,5 +666,6 @@ input:focus, select:focus { border-color: var(--accent); }
   .splash.timeup .splash-inner { font-size: 28px; padding: 8px 14px; }
   .splash.plus .splash-inner { font-size: 60px; }
   .splash.skip .splash-inner, .splash.reverse .splash-inner { width: 80px; height: 80px; font-size: 54px; }
+  .splash.swap .splash-inner, .splash.rotate .splash-inner { width: 96px; height: 96px; font-size: 50px; }
 }
 body.no-anim *, body.no-anim *::before, body.no-anim *::after { animation: none !important; transition: none !important; }

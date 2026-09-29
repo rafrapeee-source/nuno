@@ -29,7 +29,9 @@ const io = new Server(server);
 function animationMs(events) {
   let ms = 300;
   for (const e of events) {
-    if (e.type === 'play' || e.type === 'color') ms += 450;
+    if (e.type === 'play') ms += 450;
+    else if (e.type === 'color') ms += 650;
+    else if (e.type === 'swap' || e.type === 'rotate') ms += 1600;
     else if (e.type === 'stack') ms += 600;
     else if (e.type === 'draw') ms += 420 + 130 * (e.count - 1) + (e.reason === 'stack' || e.reason === 'draw2' ? 600 : 0);
     else if (['skip', 'reverse', 'uno', 'catch', 'timeout'].includes(e.type)) ms += 700;
@@ -165,6 +167,9 @@ class Room {
         break;
       case 'chooseColor':
         r = g.chooseColor(idx, action.color);
+        break;
+      case 'swap':
+        r = g.swapHands(idx, Number(action.target));
         break;
       default:
         r = { ok: false, error: 'Unknown action.' };

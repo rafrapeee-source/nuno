@@ -3,6 +3,7 @@ services:
     name: nuno
     runtime: node
     plan: free
+    region: singapore
     buildCommand: npm install
     startCommand: npm start
     healthCheckPath: /healthz

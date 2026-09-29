@@ -12,12 +12,21 @@ function bestColor(hand) {
   return best[Math.floor(Math.random() * best.length)];
 }
 
-function rank(card, nextPlayerCards) {
+function rank(card, nextPlayerCards, smallestOther, handSize) {
   // Hold wilds for later; get rid of action cards when the next player is close to winning.
   if (card.value === 'wild4') return 0;
   if (card.value === 'wild') return 1;
   if (['skip', 'reverse', 'draw2'].includes(card.value)) return nextPlayerCards <= 2 ? 30 : 12;
+  // A 7 is worth playing when someone holds a clearly smaller hand to swap for.
+  if (card.value === '7' && smallestOther < handSize - 2) return 25;
   return 2 + Number(card.value);
+}
+
+// Seats holding the fewest cards, other than the bot's own.
+function smallestHands(game, i) {
+  const others = game.players.map((_, k) => k).filter((k) => k !== i);
+  const min = Math.min(...others.map((k) => game.players[k].hand.length));
+  return others.filter((k) => game.players[k].hand.length === min);
 }
 
 function botAction(game, i) {
@@ -26,13 +35,19 @@ function botAction(game, i) {
   if (game.phase === 'chooseColor' && game.turn === i) {
     return { type: 'chooseColor', color: bestColor(hand) };
   }
+  if (game.phase === 'chooseSwap' && game.turn === i) {
+    const best = smallestHands(game, i);
+    return { type: 'swap', target: best[Math.floor(Math.random() * best.length)] };
+  }
   if (game.phase !== 'play' || game.turn !== i) return null;
 
   const playable = game.playableIds(i).map((id) => hand.find((c) => c.id === id));
   if (!playable.length) return game.pendingDrawn !== null ? { type: 'pass' } : { type: 'draw' };
 
   const nextCards = game.players[game.next(i)].hand.length;
-  playable.sort((a, b) => rank(b, nextCards) - rank(a, nextCards));
+  const smallest = game.players[smallestHands(game, i)[0]].hand.length;
+  const score = (c) => rank(c, nextCards, smallest, hand.length);
+  playable.sort((a, b) => score(b) - score(a));
   const card = playable[0];
   const rest = hand.filter((c) => c.id !== card.id);
   return {

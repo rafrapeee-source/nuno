@@ -252,6 +252,111 @@ test('forgetting UNO can be caught until the next player acts', () => {
   assert.strictEqual(g.unoVulnerable, null);
 });
 
+test('UNO can’t be called after playing down to one card', () => {
+  const g = new Game(['a', 'b', 'c']);
+  rig(g, { hands: [[card(1, 'red', '1'), card(2, 'red', '2')], [card(3, 'red', '3'), card(4, 'red', '4')], [card(5, 'red', '5'), card(6, 'red', '6')]], top: card(9, 'red', '5') });
+  g.playCard(0, 1001);
+  assert.strictEqual(g.unoVulnerable, 0);
+  assert.strictEqual(g.callUno(0).ok, false, 'too late');
+  assert.strictEqual(g.unoVulnerable, 0, 'still catchable');
+  assert.strictEqual(g.catchUno(1, 0).ok, true);
+});
+
+test('a 7 lets the player pick whose hand to swap with, on a fresh clock', () => {
+  const g = new Game(['a', 'b', 'c']);
+  rig(g, { hands: [[card(1, 'red', '7'), card(2, 'blue', '1'), card(3, 'blue', '2')], [card(4, 'green', '3')], [card(5, 'yellow', '4'), card(6, 'yellow', '5')]], top: card(9, 'red', '5') });
+  g.players[1].calledUno = true;
+  const before = g.turnId;
+  assert.strictEqual(g.playCard(0, 1001).ok, true);
+  assert.strictEqual(g.phase, 'chooseSwap');
+  assert.strictEqual(g.turn, 0);
+  assert.ok(g.turnId > before, 'the turn clock restarts');
+  assert.deepStrictEqual(g.playableIds(0), []);
+  assert.strictEqual(g.drawCard(0).ok, false);
+  assert.strictEqual(g.swapHands(1, 2).ok, false, 'only the player of the 7');
+  assert.strictEqual(g.swapHands(0, 0).ok, false, 'not with yourself');
+  assert.strictEqual(g.swapHands(0, 1).ok, true);
+  assert.deepStrictEqual(g.players[0].hand.map((c) => c.id), [1004]);
+  assert.deepStrictEqual(g.players[1].hand.map((c) => c.id), [1002, 1003]);
+  assert.strictEqual(g.players[0].calledUno, true, 'a one-card hand received counts as UNO');
+  assert.strictEqual(g.players[1].calledUno, false);
+  assert.strictEqual(g.phase, 'play');
+  assert.strictEqual(g.turn, 1);
+  const e = g.events[g.events.length - 1];
+  assert.deepStrictEqual([e.type, e.player, e.target, e.before, e.after], ['swap', 0, 1, [2, 1, 2], [1, 2, 2]]);
+});
+
+test('running out of time on a 7 swaps with a random opponent', () => {
+  const g = new Game(['a', 'b', 'c', 'd']);
+  rig(g, { hands: [[card(1, 'red', '7'), card(2, 'blue', '1')], [card(3, 'green', '3')], [card(4, 'green', '4'), card(5, 'green', '5')], [card(6, 'green', '6'), card(7, 'green', '8'), card(8, 'green', '9')]], top: card(9, 'red', '5') });
+  g.playCard(0, 1001);
+  assert.strictEqual(g.timeout(0).ok, true);
+  const e = g.events[g.events.length - 1];
+  assert.strictEqual(e.type, 'swap');
+  assert.ok([1, 2, 3].includes(e.target));
+  assert.deepStrictEqual(g.players[e.target].hand.map((c) => c.id), [1002]);
+  assert.strictEqual(g.turn, 1);
+});
+
+test('a 7 with two players swaps straight away; a last-card 7 just wins', () => {
+  let g = new Game(['a', 'b']);
+  rig(g, { hands: [[card(1, 'red', '7'), card(2, 'blue', '1'), card(3, 'blue', '2')], [card(4, 'green', '3')]], top: card(9, 'red', '5') });
+  g.playCard(0, 1001);
+  assert.strictEqual(g.phase, 'play');
+  assert.deepStrictEqual(g.players[0].hand.map((c) => c.id), [1004]);
+  assert.strictEqual(g.turn, 1);
+
+  g = new Game(['a', 'b', 'c']);
+  rig(g, { hands: [[card(1, 'red', '7')], [card(4, 'green', '3')], [card(5, 'green', '4')]], top: card(9, 'red', '5') });
+  g.playCard(0, 1001);
+  assert.strictEqual(g.phase, 'gameOver');
+  assert.strictEqual(g.result.winner, 0);
+});
+
+test('a 0 passes every hand along in the direction of play', () => {
+  const hands = () => [
+    [card(1, 'red', '0'), card(2, 'blue', '1'), card(3, 'blue', '2')],
+    [card(4, 'green', '3')],
+    [card(5, 'yellow', '4'), card(6, 'yellow', '5')],
+    [card(7, 'green', '6'), card(8, 'green', '8'), card(10, 'green', '9'), card(11, 'green', '1')],
+  ];
+  const ids = (g) => g.players.map((p) => p.hand.map((c) => c.id));
+
+  let g = new Game(['a', 'b', 'c', 'd']);
+  rig(g, { hands: hands(), top: card(9, 'red', '5') });
+  g.playCard(0, 1001);
+  // Clockwise: seat 0's hand goes to seat 1, seat 1's to seat 2 and so on.
+  assert.deepStrictEqual(ids(g), [[1007, 1008, 1010, 1011], [1002, 1003], [1004], [1005, 1006]]);
+  assert.strictEqual(g.players[2].calledUno, true);
+  assert.strictEqual(g.turn, 1);
+  assert.deepStrictEqual(g.events[g.events.length - 1].after, [4, 2, 1, 2]);
+
+  g = new Game(['a', 'b', 'c', 'd']);
+  rig(g, { hands: hands(), top: card(9, 'red', '5'), direction: -1 });
+  g.playCard(0, 1001);
+  // Counter-clockwise: seat 0's hand goes to seat 3, seat 1's to seat 0.
+  assert.deepStrictEqual(ids(g), [[1004], [1005, 1006], [1007, 1008, 1010, 1011], [1002, 1003]]);
+  assert.strictEqual(g.turn, 3);
+});
+
+test('a played Wild keeps its chosen color until it is reshuffled', () => {
+  const g = new Game(['a', 'b']);
+  rig(g, { hands: [[card(1, 'wild', 'wild'), card(2, 'blue', '1')], [card(4, 'green', '3'), card(5, 'green', '4')]], top: card(9, 'red', '5') });
+  g.playCard(0, 1001, 'green');
+  assert.strictEqual(g.top().chosen, 'green');
+  assert.strictEqual(g.events.find((e) => e.type === 'color' && e.cardId === 1001).color, 'green');
+  g.playCard(1, 1004);
+  g.deck = [];
+  g.drawCard(0);
+  assert.ok([...g.deck, ...g.players.flatMap((p) => p.hand)].every((c) => c.chosen === undefined));
+
+  const s = new Game(['a', 'b']);
+  s.phase = 'chooseColor';
+  s.discard.push({ id: 999, color: 'wild', value: 'wild' });
+  s.chooseColor(s.turn, 'blue');
+  assert.strictEqual(s.top().chosen, 'blue', 'a starting Wild is painted too');
+});
+
 test('first player to empty their hand wins and the game ends', () => {
   const g = new Game(['a', 'b', 'c']);
   rig(g, { hands: [[card(1, 'red', 'draw2')], [card(2, 'blue', '9'), card(3, 'wild', 'wild')], [card(4, 'green', 'skip')]], top: card(9, 'red', '5') });
@@ -283,6 +388,7 @@ test('simulated bot games always finish with every card accounted for', () => {
       } else if (action.type === 'draw') r = g.drawCard(g.turn);
       else if (action.type === 'pass') r = g.pass(g.turn);
       else if (action.type === 'chooseColor') r = g.chooseColor(g.turn, action.color);
+      else if (action.type === 'swap') r = g.swapHands(g.turn, action.target);
       assert.ok(r.ok, r.error);
       assert.strictEqual(g.cardCount(), DECK_SIZE);
       const ids = new Set([...g.deck, ...g.discard, ...g.players.flatMap((p) => p.hand)].map((c) => c.id));

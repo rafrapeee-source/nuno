@@ -2,6 +2,8 @@
 
 // Authoritative UNO rules engine. One hand per game: the first player to empty
 // their hand wins. Players are addressed by seat index; seat order is clockwise.
+// Plays with the 7-0 rule: a 7 swaps hands with a chosen player, a 0 passes every
+// hand along in the direction of play.
 
 const crypto = require('crypto');
 
@@ -173,6 +175,8 @@ class Game {
     if (!this.deck.length) {
       if (this.discard.length <= 1) return null;
       const top = this.discard.pop();
+      // Wilds going back into the deck are black again.
+      for (const c of this.discard) delete c.chosen;
       this.deck = shuffle(this.discard);
       this.discard = [top];
       this.addLog('Draw pile empty — discard pile reshuffled.');
@@ -241,6 +245,8 @@ class Game {
 
     this.beginAction(i);
     p.hand.splice(idx, 1);
+    // A Wild on the pile takes on the chosen color.
+    if (card.color === 'wild') card.chosen = color;
     this.discard.push(card);
     this.pendingDrawn = null;
     this.currentColor = card.color === 'wild' ? color : card.color;
@@ -249,7 +255,7 @@ class Game {
       'play'
     );
     this.event('play', { player: i, card });
-    if (card.color === 'wild') this.event('color', { player: i, color });
+    if (card.color === 'wild') this.event('color', { player: i, color, cardId: card.id });
 
     if (p.hand.length === 0) return this.finish(i);
 
@@ -293,10 +299,61 @@ class Game {
           this.takeStack(target, true);
         }
         break;
+      case '7':
+        // The player picks whose hand to take; the fresh turn id restarts their clock.
+        // With two players there's only one choice, so the swap happens at once.
+        this.phase = 'chooseSwap';
+        this.turn = i;
+        if (this.n === 2) return this.swapHands(i, target);
+        this.addLog(`${p.name} picks a player to swap hands with.`, 'alert');
+        break;
+      case '0':
+        this.rotateHands();
+        this.turn = target;
+        break;
       default:
         this.turn = target;
     }
     return ok();
+  }
+
+  counts() {
+    return this.players.map((p) => p.hand.length);
+  }
+
+  // After hands change owners nobody can be caught for a hand they were just given:
+  // whoever now holds one card counts as having called UNO.
+  afterHandsMoved() {
+    this.unoVulnerable = null;
+    for (const p of this.players) p.calledUno = p.hand.length === 1;
+  }
+
+  swapHands(i, target) {
+    if (this.phase !== 'chooseSwap' || this.turn !== i) return fail('You can’t swap hands now.');
+    if (!Number.isInteger(target) || target === i || !this.players[target]) return fail('Pick another player to swap with.');
+    this.beginAction(i);
+    const before = this.counts();
+    const a = this.players[i];
+    const b = this.players[target];
+    [a.hand, b.hand] = [b.hand, a.hand];
+    this.afterHandsMoved();
+    this.addLog(`${a.name} swaps hands with ${b.name}!`, 'alert');
+    this.event('swap', { player: i, target, before, after: this.counts() });
+    this.phase = 'play';
+    this.turn = this.next(i);
+    return ok();
+  }
+
+  // Every hand moves one seat along in the current direction of play.
+  rotateHands() {
+    const before = this.counts();
+    const hands = this.players.map((p) => p.hand);
+    this.players.forEach((p, s) => {
+      p.hand = hands[this.next(s, -1)];
+    });
+    this.afterHandsMoved();
+    this.addLog(`Everyone passes their hand ${this.direction === 1 ? 'clockwise' : 'counter-clockwise'}!`, 'alert');
+    this.event('rotate', { direction: this.direction, before, after: this.counts() });
   }
 
   drawCard(i) {
@@ -335,12 +392,17 @@ class Game {
   }
 
   // The turn timer ran out: take a stack if one is waiting, otherwise draw one card
-  // (kept even if playable) and move on. A starting Wild gets the player's best color.
+  // (kept even if playable) and move on. A starting Wild gets the player's best color,
+  // and a pending 7 swaps with a random opponent.
   timeout(i) {
     if (this.phase === 'gameOver' || this.turn !== i) return fail('It’s not their turn.');
     this.addLog(`${this.name(i)} ran out of time.`, 'alert');
     this.event('timeout', { player: i });
     if (this.phase === 'chooseColor') return this.chooseColor(i, this.favoriteColor(i));
+    if (this.phase === 'chooseSwap') {
+      const others = this.players.map((_, k) => k).filter((k) => k !== i);
+      return this.swapHands(i, others[crypto.randomInt(others.length)]);
+    }
     if (this.drawStack > 0) return this.drawCard(i);
     if (this.pendingDrawn === null) {
       const r = this.drawCard(i);
@@ -370,22 +432,21 @@ class Game {
     if (!COLORS.includes(color)) return fail('Unknown color.');
     this.beginAction(i);
     this.currentColor = color;
+    this.top().chosen = color;
     this.phase = 'play';
     this.addLog(`${this.name(i)} picks ${color}.`);
-    this.event('color', { player: i, color });
+    this.event('color', { player: i, color, cardId: this.top().id });
     return ok();
   }
 
   callUno(i) {
     const p = this.players[i];
     if (this.phase === 'gameOver') return fail('The game is over.');
-    const afterPlay = p.hand.length === 1 && this.unoVulnerable === i;
-    // Before playing: only with two cards, on your turn, when one of them can actually be played.
-    const beforePlay = p.hand.length === 2 && this.turn === i && !p.calledUno && this.playableIds(i).length > 0;
-    if (!afterPlay && !beforePlay) {
-      return fail('You can only call UNO when you can play down to your last card.');
+    // Only before playing: two cards, on your turn, one of them playable. Once you've played
+    // down to one card without calling it, it's too late — you can only hope nobody catches you.
+    if (!(p.hand.length === 2 && this.turn === i && !p.calledUno && this.playableIds(i).length > 0)) {
+      return fail('You can only call UNO before playing your second-to-last card.');
     }
-    if (afterPlay) this.unoVulnerable = null;
     p.calledUno = true;
     this.addLog(`${p.name} yells UNO!`, 'uno');
     this.event('uno', { player: i });

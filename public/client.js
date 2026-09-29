@@ -77,6 +77,26 @@
       src.connect(f).connect(g).connect(c.destination);
       src.start();
     }
+    // Filtered noise swept from one pitch to another: a card-shuffling whoosh.
+    function whoosh(dur, from, to, gain) {
+      const c = !muted && ac();
+      if (!c) return;
+      const len = Math.floor(c.sampleRate * dur);
+      const buf = c.createBuffer(1, len, c.sampleRate);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.sin((Math.PI * i) / len);
+      const src = c.createBufferSource();
+      src.buffer = buf;
+      const f = c.createBiquadFilter();
+      f.type = 'bandpass';
+      f.Q.value = 1.4;
+      f.frequency.setValueAtTime(from, c.currentTime);
+      f.frequency.exponentialRampToValueAtTime(to, c.currentTime + dur);
+      const g = c.createGain();
+      g.gain.value = gain;
+      src.connect(f).connect(g).connect(c.destination);
+      src.start();
+    }
     function tone(freqs, dur, type = 'triangle', gain = 0.1, gap = 0.08) {
       const c = !muted && ac();
       if (!c) return;
@@ -103,6 +123,14 @@
       reverse: () => tone([392, 587, 392, 587], 0.1, 'triangle', 0.1, 0.06),
       plus: () => tone([330, 247, 196], 0.18, 'sawtooth', 0.05, 0.08),
       color: () => tone([523, 784], 0.25, 'sine', 0.12, 0.07),
+      swap: () => {
+        whoosh(0.7, 400, 3200, 0.7);
+        tone([392, 523, 392, 523], 0.12, 'triangle', 0.07, 0.09);
+      },
+      rotate: () => {
+        whoosh(1, 300, 2400, 0.7);
+        tone([262, 330, 392, 523, 659], 0.14, 'triangle', 0.07, 0.08);
+      },
       turn: () => tone([880, 1175], 0.16, 'sine', 0.07, 0.1),
       win: () => tone([523, 659, 784, 1047, 1319, 1568], 0.35, 'triangle', 0.1, 0.11),
       lose: () => tone([440, 370, 311, 262], 0.35, 'triangle', 0.08, 0.2),
@@ -123,7 +151,9 @@
   function cardEl(card) {
     const e = el('div', `card c-${card.color}`);
     e.dataset.id = card.id;
-    e.title = describe(card);
+    e.title = describe(card) + (card.chosen ? ` (${card.chosen})` : '');
+    // A Wild on the pile shows its chosen color in place of the black.
+    if (card.chosen) e.classList.add('filled', `f-${card.chosen}`);
     e.appendChild(el('span', 'oval'));
     if (card.value === 'wild') {
       const tl = el('span', 'corner tl');
@@ -365,6 +395,10 @@
       b.addEventListener('click', () => act('catch', { target: idx }));
       box.appendChild(b);
     }
+    // After your 7 the seats become swap targets (see renderControls).
+    box.addEventListener('click', (e) => {
+      if (box.classList.contains('swap-target') && !e.target.closest('.catch-btn')) act('swap', { target: idx });
+    });
     return box;
   }
 
@@ -372,6 +406,7 @@
     const me = g.you;
     const who = g.players[g.turn]?.name;
     if (g.phase === 'chooseColor') return g.turn === me ? 'Choose the starting color' : `${who} is choosing the color`;
+    if (g.phase === 'chooseSwap') return g.turn === me ? 'Pick a player to swap hands with' : `${who} is picking a hand to swap with`;
     if (g.phase === 'play') {
       if (g.drawStack > 0) {
         if (g.turn !== me) return `${who} must stack or take +${g.drawStack}`;
@@ -436,14 +471,16 @@
     act('play', { cardId: card.id });
   }
 
-  function renderHand(g, hidden) {
+  // `cards` shows a hand you're about to give away (a 7 or 0 in this update) instead of your current one.
+  function renderHand(g, hidden, cards) {
     const hand = $('#hand');
+    const live = !cards;
     hand.replaceChildren();
-    hand.classList.toggle('my-turn', g.phase === 'play' && g.turn === g.you);
-    for (const card of sortHand(g.hand)) {
+    hand.classList.toggle('my-turn', live && g.phase === 'play' && g.turn === g.you);
+    for (const card of sortHand(cards || g.hand)) {
       const c = cardEl(card);
-      if (g.playable.includes(card.id)) c.classList.add('playable');
-      if (card.id === g.pendingDrawn) c.classList.add('drawn');
+      if (live && g.playable.includes(card.id)) c.classList.add('playable');
+      if (live && card.id === g.pendingDrawn) c.classList.add('drawn');
       if (hidden.has(card.id)) c.classList.add('incoming');
       c.addEventListener('click', () => onCardClick(card));
       hand.appendChild(c);
@@ -451,11 +488,14 @@
     layoutHand();
   }
 
-  function renderDiscard(g, hidden) {
+  // Wilds in `unfilled` stay black until their color event paints them.
+  function renderDiscard(g, hidden, unfilled = new Set()) {
     const d = $('#discard');
     d.replaceChildren();
     for (const c of g.discardTail) {
-      const e = cardEl(c);
+      const pending = unfilled.has(c.id) && c.chosen;
+      const e = cardEl(pending ? { ...c, chosen: null } : c);
+      if (pending) e.dataset.fill = c.chosen;
       const t = pileTransform(c.id);
       e.style.transform = `translate(${t.x}px, ${t.y}px) rotate(${t.r}deg)`;
       if (hidden.has(c.id)) e.classList.add('incoming');
@@ -479,16 +519,20 @@
     });
 
     $('#deck-count').textContent = `${g.deckCount} left`;
-    renderDiscard(g, hide.pile);
+    renderDiscard(g, hide.pile, hide.fill);
     setStackBadge(hide.stack ?? g.drawStack);
     $('#direction').className = `direction ${g.currentColor || ''} ${g.direction === -1 ? 'ccw' : ''}`;
 
     const mine = g.players[me];
     $('#me-avatar').replaceChildren(avatar(mine.name, me));
     $('#me-name').textContent = mine.name + (me === g.dealer ? ' (dealer)' : '');
-    $('#me-count').textContent = `${mine.count} card${mine.count === 1 ? '' : 's'}`;
-    renderHand(g, hide.hand);
+    setMeCount(hide.oldHand ? hide.oldHand.length : mine.count);
+    renderHand(g, hide.hand, hide.oldHand);
     if (!hide.deferControls) renderControls(g);
+  }
+
+  function setMeCount(count) {
+    $('#me-count').textContent = `${count} card${count === 1 ? '' : 's'}`;
   }
 
   // Turn controls (status, Take / Pass / UNO, drawable deck). While an update animates,
@@ -499,6 +543,13 @@
     shownTurn = live ? g.turn : null;
     $('.me').classList.toggle('active', shownTurn === me);
     for (const o of document.querySelectorAll('.opp')) o.classList.toggle('active', Number(o.dataset.seat) === shownTurn);
+    // After playing a 7, every opponent's seat is a button (clicks handled in renderOpponent).
+    const choosing = g.phase === 'chooseSwap' && g.turn === me;
+    for (const o of document.querySelectorAll('.opp')) {
+      o.classList.toggle('swap-target', choosing);
+      o.querySelector('.swap-btn')?.remove();
+      if (choosing) o.appendChild(el('button', 'swap-btn', '⇆ Swap'));
+    }
     $('#deck').classList.toggle('can-draw', g.phase === 'play' && g.turn === me && g.pendingDrawn === null);
     const status = statusText(g);
     if ($('#status').textContent !== status) {
@@ -512,8 +563,8 @@
     $('#take').classList.toggle('hidden', !mustAnswer);
     $('#take').textContent = `Take +${g.drawStack}`;
     $('#deck').title = mustAnswer ? `Take ${g.drawStack} cards` : 'Draw a card';
-    const unoReady =
-      g.unoVulnerable === me || (live && g.hand.length === 2 && g.turn === me && !g.calledUno && g.playable.length > 0);
+    // Only before playing down to one card — forget, and it's too late to call it.
+    const unoReady = live && g.hand.length === 2 && g.turn === me && !g.calledUno && g.playable.length > 0;
     $('#uno').disabled = !unoReady;
     $('#uno').classList.toggle('ready', unoReady);
     $('#uno').textContent = g.calledUno && g.hand.length <= 2 ? 'UNO ✓' : 'UNO!';
@@ -635,8 +686,10 @@
     return box ? point(box) : point($('#discard'));
   }
 
-  // Flies a card from one point to another. With `flip`, it turns from its back to its face.
-  function fly({ card, from, to, flip = false, duration = 420, delay = 0, lift = 60, onStart, onLand }) {
+  // Flies a card from one point to another. With `flip`, it turns from its back to its face
+  // (or, with flip: 'out', from its face to its back). `bend` curves the path sideways, to the
+  // left of travel, so two cards trading places orbit past each other.
+  function fly({ card, from, to, flip = false, duration = 420, delay = 0, lift = 60, bend = 0, onStart, onLand }) {
     const w = to.w;
     const h = w * 1.5;
     const node = el('div', 'flyer');
@@ -655,8 +708,11 @@
     fx.appendChild(node);
 
     const s0 = (from.w || w) / w;
-    const mx = (from.cx + to.cx) / 2;
-    const my = (from.cy + to.cy) / 2 - lift;
+    const dx = to.cx - from.cx;
+    const dy = to.cy - from.cy;
+    const len = Math.hypot(dx, dy) || 1;
+    const mx = (from.cx + to.cx) / 2 + (bend * dy) / len;
+    const my = (from.cy + to.cy) / 2 - lift - (bend * dx) / len;
     const frames = [
       { transform: `translate(${from.cx - w / 2}px, ${from.cy - h / 2}px) rotate(${from.rot || 0}deg) scale(${s0})` },
       { transform: `translate(${mx - w / 2}px, ${my - h / 2}px) rotate(${((from.rot || 0) + to.rot) / 2 + 8}deg) scale(${Math.max(s0, 1) * 1.08})`, offset: 0.5 },
@@ -665,7 +721,8 @@
     const opts = { duration, delay, easing: 'cubic-bezier(.3,.7,.3,1)', fill: 'both' };
     const anim = node.animate(frames, opts);
     if (flip && card) {
-      inner.firstChild.animate([{ transform: 'rotateY(180deg)' }, { transform: 'rotateY(0deg)' }], { ...opts, easing: 'ease-in-out' });
+      const turn = flip === 'out' ? ['rotateY(0deg)', 'rotateY(180deg)'] : ['rotateY(180deg)', 'rotateY(0deg)'];
+      inner.firstChild.animate(turn.map((transform) => ({ transform })), { ...opts, easing: 'ease-in-out' });
     }
     setTimeout(() => {
       node.style.visibility = '';
@@ -747,6 +804,82 @@
     if (c) c.classList.remove('incoming');
   }
 
+  // Paints a Wild's black background in the chosen color, spreading out from the center.
+  function fillWild(card, color) {
+    card.classList.add('filled', `f-${color}`, 'fill-anim');
+    delete card.dataset.fill;
+  }
+
+  // Where a whole hand lands: your hand area at full card size, or an opponent's fan.
+  function seatTarget(idx) {
+    if (idx !== S.game.you) return { ...seatPoint(idx), rot: 0 };
+    const hand = $('#hand');
+    return { ...point(hand), w: parseFloat(getComputedStyle(hand).getPropertyValue('--cw')) || 84 };
+  }
+
+  // Hands changing owners (7 swap, 0 rotate). `moves` lists [fromSeat, toSeat] pairs; all hands
+  // fly at once as bundles of cards, fans empty on take-off and refill on landing, and your new
+  // hand deals itself face up when it arrives.
+  async function moveHands(e, moves, ctx) {
+    const g = S.game;
+    const me = g.you;
+    // Every path bends the same way relative to its travel, so two hands trading places orbit
+    // past each other and a rotation swirls round the table.
+    const bend = 120;
+    const lift = 0;
+    for (const [from] of moves) {
+      if (from !== me) setOppCount(from, 0);
+      document.querySelector(from === me ? '.me-bar' : `.opp[data-seat="${from}"]`)?.classList.add('swapping');
+    }
+    const jobs = moves.map(([from, to]) => {
+      const dest = seatTarget(to);
+      const flights = [];
+      if (from === me) {
+        // Your own cards leave face up, turning over as they go.
+        const byId = new Map((ctx.oldHand || g.hand).map((c) => [c.id, c]));
+        [...$('#hand').children].forEach((node, j) => {
+          const card = byId.get(Number(node.dataset.id));
+          const rot = parseFloat(node.style.getPropertyValue('--rot')) || 0;
+          flights.push(fly({
+            card, from: point(node, rot), to: dest, flip: 'out', lift, bend,
+            duration: 700, delay: Math.min(j * 30, 300),
+            onStart: () => { node.style.visibility = 'hidden'; },
+          }));
+        });
+        setMeCount(0);
+      } else {
+        const src = seatTarget(from);
+        const n = Math.min(e.before[from], 8);
+        for (let j = 0; j < n; j++) flights.push(fly({ from: src, to: dest, lift, bend, duration: 700, delay: j * 45 }));
+      }
+      return Promise.all(flights).then(() => {
+        if (to === me) {
+          ctx.handDealt = true;
+          return dealNewHand(g);
+        }
+        ctx.shown[to] = e.after[to];
+        setOppCount(to, e.after[to]);
+        bump(document.querySelector(`.opp[data-seat="${to}"]`), 'land');
+      });
+    });
+    await Promise.all(jobs);
+    for (const s of document.querySelectorAll('.swapping')) s.classList.remove('swapping');
+  }
+
+  // Your freshly received hand fans out and flips face up, card by card.
+  async function dealNewHand(g) {
+    renderHand(g, new Set());
+    setMeCount(g.hand.length);
+    const cards = [...$('#hand').children];
+    cards.forEach((c, j) => {
+      c.style.animationDelay = `${Math.min(j * 40, 400)}ms`;
+      c.classList.add('swap-in');
+    });
+    Sound.deal();
+    await wait(Math.min(cards.length * 40, 400) + 450);
+    for (const c of cards) c.classList.remove('swap-in');
+  }
+
   async function dealTo(ctx, seat, delay) {
     const g = S.game;
     const deck = point($('#deck .card'));
@@ -794,8 +927,9 @@
         } else {
           from = { ...seatPoint(e.player), rot: 0 };
         }
+        // A Wild flies in black; its color event fills it once it's on the pile.
         await fly({
-          card: e.card, from, to: discardTarget(e.card), flip: e.player !== me,
+          card: { ...e.card, chosen: null }, from, to: discardTarget(e.card), flip: e.player !== me,
           duration: 450, lift: 70,
           onStart: Sound.draw,
           onLand: () => { revealPile(e.card.id); Sound.play(); },
@@ -803,12 +937,28 @@
         if (e.card.value === 'wild4' || e.card.value === 'wild') await wait(80);
         break;
       }
-      case 'color':
+      case 'color': {
         Sound.color();
+        const wild = document.querySelector(`#discard .card[data-id="${e.cardId}"]`);
+        if (wild) fillWild(wild, e.color);
         ripple(e.color, point($('#discard')));
         bump($('#direction'), 'burst');
-        await wait(450);
+        await wait(650);
         break;
+      }
+      case 'swap':
+        Sound.swap();
+        splash('⇆', point($('.center')), 'swap', 1100);
+        await moveHands(e, [[e.player, e.target], [e.target, e.player]], ctx);
+        break;
+      case 'rotate': {
+        Sound.rotate();
+        bump($('#direction'), 'whirl');
+        splash('0', point($('.center')), `rotate${e.direction === -1 ? ' ccw' : ''}`, 1200);
+        const step = (s) => (((s + e.direction) % n) + n) % n;
+        await moveHands(e, g.players.map((_, s) => [s, step(s)]), ctx);
+        break;
+      }
       case 'skip':
         Sound.skip();
         bump(document.querySelector(`.opp[data-seat="${e.player}"]`), 'hit');
@@ -882,34 +1032,47 @@
   }
 
   // Works out which cards must stay hidden until an animation delivers them.
-  function planHidden(g, events, newIds, prevStack) {
-    const hide = { hand: new Set(), pile: new Set(), opp: {} };
+  function planHidden(g, events, newIds, prevStack, prevHand) {
+    const hide = { hand: new Set(), pile: new Set(), opp: {}, fill: new Set() };
     if (events.some((e) => e.type === 'stack')) hide.stack = prevStack;
+    for (const e of events) {
+      if (e.type === 'play' || e.type === 'flip') hide.pile.add(e.card.id);
+      else if (e.type === 'color' && e.cardId != null) hide.fill.add(e.cardId);
+    }
+
+    // Opponents' fans start from what they held before the update: walk back from the final
+    // counts. (A played card already counts as gone while it flies to the pile.)
+    const start = g.players.map((p) => p.count);
+    for (const e of events.slice().reverse()) {
+      if (e.type === 'draw') start[e.player] -= e.count;
+      else if (e.type === 'swap' || e.type === 'rotate') start.splice(0, start.length, ...e.before);
+      else if (e.type === 'deal') start.fill(0);
+    }
+    const shown = {};
+    g.players.forEach((p, i) => {
+      if (i === g.you) return;
+      shown[i] = Math.max(0, start[i]);
+      hide.opp[i] = p.count - shown[i];
+    });
+
+    // If your hand is about to be swapped away, keep showing it until the animation takes it.
     const mine = [];
-    const newest = sortHand(g.hand).filter((c) => newIds.has(c.id)).map((c) => c.id);
+    const handMoves = events.some((e) => e.type === 'rotate' || (e.type === 'swap' && (e.player === g.you || e.target === g.you)));
+    if (handMoves) {
+      const played = new Set(events.filter((e) => e.type === 'play' && e.player === g.you).map((e) => e.card.id));
+      hide.oldHand = prevHand.filter((c) => !played.has(c.id));
+      return { hide, mine, shown };
+    }
     let needMine = 0;
     for (const e of events) {
-      if (e.type === 'deal') {
-        g.players.forEach((_, i) => {
-          if (i === g.you) needMine += 7;
-          else hide.opp[i] = (hide.opp[i] || 0) + 7;
-        });
-      } else if (e.type === 'draw') {
-        if (e.player === g.you) needMine += e.count;
-        else hide.opp[e.player] = (hide.opp[e.player] || 0) + e.count;
-      } else if (e.type === 'play' || e.type === 'flip') {
-        hide.pile.add(e.card.id);
-      }
+      if (e.type === 'deal') needMine += 7;
+      else if (e.type === 'draw' && e.player === g.you) needMine += e.count;
     }
+    const newest = sortHand(g.hand).filter((c) => newIds.has(c.id)).map((c) => c.id);
     for (const id of newest.slice(0, needMine)) {
       hide.hand.add(id);
       mine.push(id);
     }
-    // Opponents' fans count up from what was shown before the update.
-    const shown = {};
-    g.players.forEach((p, i) => {
-      if (i !== g.you) shown[i] = Math.max(0, p.count - (hide.opp[i] || 0));
-    });
     return { hide, mine, shown };
   }
 
@@ -966,12 +1129,14 @@
     const newIds = new Set(g.hand.filter((c) => !known.has(c.id)).map((c) => c.id));
     prevHandIds = new Set(g.hand.map((c) => c.id));
 
-    const plan = skip ? { hide: { hand: new Set(), pile: new Set(), opp: {} }, mine: [], shown: {} } : planHidden(g, events, newIds, sameGame ? pg.drawStack : 0);
+    const plan = skip
+      ? { hide: { hand: new Set(), pile: new Set(), opp: {} }, mine: [], shown: {} }
+      : planHidden(g, events, newIds, sameGame ? pg.drawStack : 0, sameGame ? pg.hand : []);
     plan.hide.deferControls = !skip && events.length > 0;
     renderBoard(s, plan.hide);
 
     if (!skip) {
-      const ctx = { handRects, mine: plan.mine, shown: plan.shown };
+      const ctx = { handRects, mine: plan.mine, shown: plan.shown, oldHand: plan.hide.oldHand };
       for (const e of events) {
         try {
           await animateEvent(e, ctx);
@@ -981,7 +1146,10 @@
       }
       // Anything an animation didn't deliver gets shown now.
       for (const c of document.querySelectorAll('.incoming')) c.classList.remove('incoming');
+      for (const c of document.querySelectorAll('#discard [data-fill]')) fillWild(c, c.dataset.fill);
+      if (plan.hide.oldHand && !ctx.handDealt) renderHand(g, new Set());
       g.players.forEach((p, i) => i !== g.you && setOppCount(i, p.count));
+      setMeCount(g.players[g.you].count);
       setStackBadge(g.drawStack);
       renderControls(g);
     }
