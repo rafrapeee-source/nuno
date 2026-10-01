@@ -2,8 +2,8 @@
 
 // Authoritative UNO rules engine. One hand per game: the first player to empty
 // their hand wins. Players are addressed by seat index; seat order is clockwise.
-// Plays with the 7-0 rule: a 7 swaps hands with a chosen player, a 0 passes every
-// hand along in the direction of play.
+// Optionally plays with the 7-0 rule: a 7 swaps hands with a chosen player, a 0 passes
+// every hand along in the direction of play.
 
 const crypto = require('crypto');
 
@@ -62,9 +62,10 @@ const ok = (extra = {}) => ({ ok: true, ...extra });
 const fail = (error) => ({ ok: false, error });
 
 class Game {
-  constructor(names) {
+  constructor(names, { sevenZero = false } = {}) {
     if (names.length < 2 || names.length > MAX_PLAYERS) throw new Error(`UNO needs 2-${MAX_PLAYERS} players`);
     this.id = crypto.randomUUID();
+    this.sevenZero = sevenZero;
     this.players = names.map((name) => ({ name, hand: [], calledUno: false }));
     // Officially everyone draws a card and the highest deals; a random dealer is equivalent.
     this.dealer = crypto.randomInt(names.length);
@@ -266,7 +267,9 @@ class Game {
     }
 
     const target = this.next(i);
-    switch (card.value) {
+    // Without the 7-0 rule, 7s and 0s are plain number cards.
+    const effect = this.sevenZero || !['7', '0'].includes(card.value) ? card.value : null;
+    switch (effect) {
       case 'skip':
         this.addLog(`${this.name(target)} is skipped.`);
         this.event('skip', { player: target });
@@ -488,6 +491,7 @@ class Game {
     const me = this.players[i];
     return {
       id: this.id,
+      sevenZero: this.sevenZero,
       phase: this.phase,
       turn: this.turn,
       turnId: this.turnId,

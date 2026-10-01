@@ -6,6 +6,7 @@ const { Game, DECK_SIZE, buildDeck } = require('../src/game');
 const { botAction } = require('../src/bot');
 
 const card = (id, color, value) => ({ id: 1000 + id, color, value });
+const SEVEN_ZERO = { sevenZero: true };
 
 // Puts a game into a known position; unused cards stay in the draw pile.
 function rig(game, { hands, top, color, turn = 0, direction = 1 }) {
@@ -263,7 +264,7 @@ test('UNO can’t be called after playing down to one card', () => {
 });
 
 test('a 7 lets the player pick whose hand to swap with, on a fresh clock', () => {
-  const g = new Game(['a', 'b', 'c']);
+  const g = new Game(['a', 'b', 'c'], SEVEN_ZERO);
   rig(g, { hands: [[card(1, 'red', '7'), card(2, 'blue', '1'), card(3, 'blue', '2')], [card(4, 'green', '3')], [card(5, 'yellow', '4'), card(6, 'yellow', '5')]], top: card(9, 'red', '5') });
   g.players[1].calledUno = true;
   const before = g.turnId;
@@ -287,7 +288,7 @@ test('a 7 lets the player pick whose hand to swap with, on a fresh clock', () =>
 });
 
 test('running out of time on a 7 swaps with a random opponent', () => {
-  const g = new Game(['a', 'b', 'c', 'd']);
+  const g = new Game(['a', 'b', 'c', 'd'], SEVEN_ZERO);
   rig(g, { hands: [[card(1, 'red', '7'), card(2, 'blue', '1')], [card(3, 'green', '3')], [card(4, 'green', '4'), card(5, 'green', '5')], [card(6, 'green', '6'), card(7, 'green', '8'), card(8, 'green', '9')]], top: card(9, 'red', '5') });
   g.playCard(0, 1001);
   assert.strictEqual(g.timeout(0).ok, true);
@@ -299,14 +300,14 @@ test('running out of time on a 7 swaps with a random opponent', () => {
 });
 
 test('a 7 with two players swaps straight away; a last-card 7 just wins', () => {
-  let g = new Game(['a', 'b']);
+  let g = new Game(['a', 'b'], SEVEN_ZERO);
   rig(g, { hands: [[card(1, 'red', '7'), card(2, 'blue', '1'), card(3, 'blue', '2')], [card(4, 'green', '3')]], top: card(9, 'red', '5') });
   g.playCard(0, 1001);
   assert.strictEqual(g.phase, 'play');
   assert.deepStrictEqual(g.players[0].hand.map((c) => c.id), [1004]);
   assert.strictEqual(g.turn, 1);
 
-  g = new Game(['a', 'b', 'c']);
+  g = new Game(['a', 'b', 'c'], SEVEN_ZERO);
   rig(g, { hands: [[card(1, 'red', '7')], [card(4, 'green', '3')], [card(5, 'green', '4')]], top: card(9, 'red', '5') });
   g.playCard(0, 1001);
   assert.strictEqual(g.phase, 'gameOver');
@@ -322,7 +323,7 @@ test('a 0 passes every hand along in the direction of play', () => {
   ];
   const ids = (g) => g.players.map((p) => p.hand.map((c) => c.id));
 
-  let g = new Game(['a', 'b', 'c', 'd']);
+  let g = new Game(['a', 'b', 'c', 'd'], SEVEN_ZERO);
   rig(g, { hands: hands(), top: card(9, 'red', '5') });
   g.playCard(0, 1001);
   // Clockwise: seat 0's hand goes to seat 1, seat 1's to seat 2 and so on.
@@ -331,12 +332,26 @@ test('a 0 passes every hand along in the direction of play', () => {
   assert.strictEqual(g.turn, 1);
   assert.deepStrictEqual(g.events[g.events.length - 1].after, [4, 2, 1, 2]);
 
-  g = new Game(['a', 'b', 'c', 'd']);
+  g = new Game(['a', 'b', 'c', 'd'], SEVEN_ZERO);
   rig(g, { hands: hands(), top: card(9, 'red', '5'), direction: -1 });
   g.playCard(0, 1001);
   // Counter-clockwise: seat 0's hand goes to seat 3, seat 1's to seat 0.
   assert.deepStrictEqual(ids(g), [[1004], [1005, 1006], [1007, 1008, 1010, 1011], [1002, 1003]]);
   assert.strictEqual(g.turn, 3);
+});
+
+test('at a standard table 7s and 0s are plain number cards', () => {
+  const g = new Game(['a', 'b', 'c']);
+  assert.strictEqual(g.sevenZero, false);
+  rig(g, { hands: [[card(1, 'red', '7'), card(2, 'red', '0'), card(3, 'blue', '2')], [card(4, 'green', '3'), card(5, 'red', '8')], [card(6, 'yellow', '4'), card(7, 'red', '9')]], top: card(9, 'red', '5') });
+  g.playCard(0, 1001);
+  assert.strictEqual(g.phase, 'play');
+  assert.strictEqual(g.turn, 1);
+  g.playCard(1, 1005);
+  g.playCard(2, 1007);
+  g.playCard(0, 1002);
+  assert.deepStrictEqual(g.players.map((p) => p.hand.map((c) => c.id)), [[1003], [1004], [1006]]);
+  assert.ok(!g.events.some((e) => e.type === 'swap' || e.type === 'rotate'));
 });
 
 test('a played Wild keeps its chosen color until it is reshuffled', () => {
@@ -372,7 +387,7 @@ test('first player to empty their hand wins and the game ends', () => {
 test('simulated bot games always finish with every card accounted for', () => {
   for (let k = 0; k < 300; k++) {
     const n = 2 + (k % 7); // 2 to 8 players
-    const g = new Game(Array.from({ length: n }, (_, i) => `p${i}`));
+    const g = new Game(Array.from({ length: n }, (_, i) => `p${i}`), { sevenZero: k % 2 === 0 });
     let steps = 0;
     while (g.phase !== 'gameOver') {
       assert.ok(++steps < 50_000, 'game did not finish');

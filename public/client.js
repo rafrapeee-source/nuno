@@ -255,10 +255,30 @@
   const urlRoom = new URLSearchParams(location.search).get('room');
   if (urlRoom) $('#code').value = urlRoom.toUpperCase().slice(0, 4);
 
+  // Standard / 7-0 picker, used on the home screen and (host only) in the lobby.
+  function syncModePick(pick, sevenZero, enabled = true) {
+    for (const b of pick.querySelectorAll('.mode-opt')) {
+      const on = (b.dataset.mode === 'sevenZero') === sevenZero;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-checked', String(on));
+      b.disabled = !enabled;
+    }
+  }
+
+  let homeSevenZero = store.get('nuno.mode') === 'sevenZero';
+  syncModePick($('#home-mode'), homeSevenZero);
+  for (const b of document.querySelectorAll('#home-mode .mode-opt')) {
+    b.addEventListener('click', () => {
+      homeSevenZero = b.dataset.mode === 'sevenZero';
+      store.set('nuno.mode', b.dataset.mode);
+      syncModePick($('#home-mode'), homeSevenZero);
+    });
+  }
+
   $('#create').addEventListener('click', async () => {
     const name = myName();
     if (!name) return;
-    const r = await emit('room:create', { name });
+    const r = await emit('room:create', { name, sevenZero: homeSevenZero });
     if (r.ok) enterRoom(r.code);
     else toast(r.error || 'Could not create a table.', 'error');
   });
@@ -281,6 +301,7 @@
     show('lobby');
     const isHost = s.hostIndex === s.you;
     $('#lobby-code').textContent = s.code;
+    syncModePick($('#lobby-mode'), s.sevenZero, isHost);
     const list = $('#seats');
     list.replaceChildren();
     for (let i = 0; i < s.maxSeats; i++) {
@@ -310,6 +331,13 @@
         ? `Share the code with friends or add a bot — you need 2 to ${s.maxSeats} players.`
         : `Ready with ${s.seats.length} players.`
       : `Waiting for ${s.seats[s.hostIndex]?.name || 'the host'} to start…`;
+  }
+
+  for (const b of document.querySelectorAll('#lobby-mode .mode-opt')) {
+    b.addEventListener('click', async () => {
+      const r = await emit('room:setRules', { sevenZero: b.dataset.mode === 'sevenZero' });
+      if (!r.ok) toast(r.error, 'error');
+    });
   }
 
   $('#add-bot').addEventListener('click', async () => {
@@ -518,6 +546,8 @@
       $(`#opp-${slot}`).appendChild(renderOpponent(s, g, idx, shown, big));
     });
 
+    $('#rules-tag').textContent = g.sevenZero ? '7-0 rule' : 'Standard';
+    $('#rules-tag').classList.toggle('host', g.sevenZero);
     $('#deck-count').textContent = `${g.deckCount} left`;
     renderDiscard(g, hide.pile, hide.fill);
     setStackBadge(hide.stack ?? g.drawStack);

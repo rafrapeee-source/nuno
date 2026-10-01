@@ -57,8 +57,9 @@ function newCode() {
 }
 
 class Room {
-  constructor(code) {
+  constructor(code, sevenZero = false) {
     this.code = code;
+    this.sevenZero = sevenZero; // table rules: standard UNO or the 7-0 rule
     this.hostId = null;
     this.seats = []; // { playerId, name, socketId, connected, isBot, disconnectedAt }
     this.game = null;
@@ -95,6 +96,7 @@ class Room {
       you: idx,
       hostIndex: this.seatOf(this.hostId),
       maxSeats: MAX_SEATS,
+      sevenZero: this.sevenZero,
       seats: this.seats.map((s) => ({ name: s.name, isBot: s.isBot, connected: s.isBot || s.connected })),
       game: this.game
         ? {
@@ -213,7 +215,7 @@ class Room {
   }
 
   startGame() {
-    this.game = new Game(this.seats.map((s) => s.name));
+    this.game = new Game(this.seats.map((s) => s.name), { sevenZero: this.sevenZero });
     this.dealtAt = Date.now();
     this.lastEventId = 0;
     this.turnKey = null;
@@ -288,8 +290,8 @@ io.on('connection', (socket) => {
   const playerId = String(socket.handshake.auth?.playerId || '').slice(0, 64) || crypto.randomUUID();
   socket.data.playerId = playerId;
 
-  socket.on('room:create', ({ name } = {}, cb = () => {}) => {
-    const room = new Room(newCode());
+  socket.on('room:create', ({ name, sevenZero } = {}, cb = () => {}) => {
+    const room = new Room(newCode(), sevenZero === true);
     rooms.set(room.code, room);
     room.seats.push({ playerId, name: cleanName(name), socketId: null, connected: true, isBot: false });
     room.hostId = playerId;
@@ -336,6 +338,17 @@ io.on('connection', (socket) => {
     const used = new Set(room.seats.map((s) => s.name));
     const name = BOT_NAMES.find((n) => !used.has(n)) || 'Bot';
     room.seats.push({ playerId: `bot-${crypto.randomUUID()}`, name, socketId: null, connected: true, isBot: true });
+    cb({ ok: true });
+    room.update();
+  });
+
+  socket.on('room:setRules', ({ sevenZero } = {}, cb = () => {}) => {
+    const ctx = roomOf(socket);
+    if (!ctx) return cb({ ok: false, error: 'Not in a room.' });
+    const { room } = ctx;
+    if (room.hostId !== playerId) return cb({ ok: false, error: 'Only the host can change the rules.' });
+    if (room.game) return cb({ ok: false, error: 'The game has started.' });
+    room.sevenZero = sevenZero === true;
     cb({ ok: true });
     room.update();
   });

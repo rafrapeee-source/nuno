@@ -98,6 +98,19 @@ input:focus, select:focus { border-color: var(--accent); }
 .join-row { display: flex; gap: 10px; }
 .join-row input { flex: 1; min-width: 0; text-transform: uppercase; letter-spacing: 6px; font-weight: 900; text-align: center; }
 
+.mode-pick { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.mode-opt {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  padding: 10px 12px; border-radius: 14px; text-align: left; cursor: pointer;
+  background: rgba(255, 255, 255, 0.06); border: 2px solid var(--line);
+  transition: border-color 0.2s, background 0.2s;
+}
+.mode-opt b { font-weight: 900; }
+.mode-opt small { color: var(--muted); font-weight: 600; font-size: 0.78rem; }
+.mode-opt.on { border-color: var(--accent); background: rgba(255, 213, 74, 0.14); }
+.mode-opt:disabled { cursor: default; }
+.mode-opt:disabled:not(.on) { opacity: 0.45; }
+.round-info .tag { margin-right: 6px; vertical-align: 1px; }
 .lobby-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
 .code-display { font-size: 2.4rem; font-weight: 900; letter-spacing: 8px; color: var(--accent); }
 .seats { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }

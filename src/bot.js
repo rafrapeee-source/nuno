@@ -12,13 +12,13 @@ function bestColor(hand) {
   return best[Math.floor(Math.random() * best.length)];
 }
 
-function rank(card, nextPlayerCards, smallestOther, handSize) {
+function rank(card, nextPlayerCards, smallestOther, handSize, sevenZero) {
   // Hold wilds for later; get rid of action cards when the next player is close to winning.
   if (card.value === 'wild4') return 0;
   if (card.value === 'wild') return 1;
   if (['skip', 'reverse', 'draw2'].includes(card.value)) return nextPlayerCards <= 2 ? 30 : 12;
   // A 7 is worth playing when someone holds a clearly smaller hand to swap for.
-  if (card.value === '7' && smallestOther < handSize - 2) return 25;
+  if (sevenZero && card.value === '7' && smallestOther < handSize - 2) return 25;
   return 2 + Number(card.value);
 }
 
@@ -46,7 +46,7 @@ function botAction(game, i) {
 
   const nextCards = game.players[game.next(i)].hand.length;
   const smallest = game.players[smallestHands(game, i)[0]].hand.length;
-  const score = (c) => rank(c, nextCards, smallest, hand.length);
+  const score = (c) => rank(c, nextCards, smallest, hand.length, game.sevenZero);
   playable.sort((a, b) => score(b) - score(a));
   const card = playable[0];
   const rest = hand.filter((c) => c.id !== card.id);

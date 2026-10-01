@@ -21,6 +21,13 @@
         <span>Your name</span>
         <input id="name" maxlength="16" autocomplete="nickname" placeholder="Enter your name">
       </label>
+      <div class="field">
+        <span>Table rules</span>
+        <div id="home-mode" class="mode-pick" role="radiogroup" aria-label="Table rules">
+          <button class="mode-opt" data-mode="standard" role="radio"><b>Standard</b><small>Classic UNO</small></button>
+          <button class="mode-opt" data-mode="sevenZero" role="radio"><b>7-0 rule</b><small>7 swaps a hand, 0 passes all</small></button>
+        </div>
+      </div>
       <button id="create" class="btn primary big">Create a table</button>
       <div class="divider"><span>or join one</span></div>
       <div class="join-row">
@@ -41,6 +48,10 @@
         </div>
         <button id="copy-link" class="btn">Copy invite link</button>
       </div>
+      <div id="lobby-mode" class="mode-pick" role="radiogroup" aria-label="Table rules">
+        <button class="mode-opt" data-mode="standard" role="radio"><b>Standard</b><small>Classic UNO</small></button>
+        <button class="mode-opt" data-mode="sevenZero" role="radio"><b>7-0 rule</b><small>7 swaps a hand, 0 passes all</small></button>
+      </div>
       <ol id="seats" class="seats"></ol>
       <div id="host-controls" class="host-controls">
         <button id="add-bot" class="btn">+ Add bot</button>
@@ -58,7 +69,7 @@
   <section id="game" class="screen hidden">
     <div class="table">
       <header class="topbar">
-        <div class="round-info">First to play all their cards wins</div>
+        <div class="round-info"><span id="rules-tag" class="tag"></span> First to play all their cards wins</div>
         <div class="topbar-actions">
           <button id="anim" class="btn small-btn" aria-label="Toggle animations">✨</button>
           <button id="sound" class="btn small-btn" aria-label="Toggle sound">🔊</button>
@@ -162,7 +173,8 @@
         <li><strong>Wild</strong> — play any time and choose the next color. The card takes on that color on the pile.</li>
         <li><strong>Wild Draw Four</strong> — play any time and choose the color; the next player must stack another +4 or draw 4 and lose their turn. It can’t be challenged.</li>
       </ul>
-      <h3>7-0 rule</h3>
+      <h3>7-0 rule (7-0 tables only)</h3>
+      <p>When creating a table, pick <strong>Standard</strong> or <strong>7-0 rule</strong>; the host can switch in the lobby. At a standard table 7s and 0s are ordinary number cards. At a 7-0 table:</p>
       <ul>
         <li><strong>7</strong> — swap hands with a player of your choice: click their seat. Your 10-second clock restarts for the choice; if it runs out, a random opponent is picked. With 2 players you swap straight away.</li>
         <li><strong>0</strong> — everyone passes their hand to the next player in the direction of play.</li>
